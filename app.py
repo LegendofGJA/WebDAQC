@@ -15,6 +15,44 @@ TEMPLATE_PATH = BASE_DIR / "template.xlsx"
 
 st.set_page_config(page_title="Internal Audit / Visit Store", layout="wide")
 
+st.markdown(
+    """
+    <style>
+    /* Kategori header - meniru baris kategori berwarna di Excel */
+    .cat-banner {
+        background: #1f3864;
+        color: #ffffff;
+        font-weight: 700;
+        font-size: 1.05rem;
+        padding: 8px 14px;
+        border-radius: 4px;
+        margin: 18px 0 6px 0;
+        letter-spacing: .03em;
+    }
+    .subcat-label {
+        font-weight: 700;
+        text-decoration: underline;
+        margin: 10px 0 4px 4px;
+        color: #1f3864;
+    }
+    /* Panel tombol melayang di kiri bawah */
+    div.st-key-floating_actions {
+        position: fixed;
+        left: 18px;
+        bottom: 18px;
+        z-index: 9999;
+        background: #ffffff;
+        padding: 12px;
+        border-radius: 12px;
+        box-shadow: 0 4px 18px rgba(0,0,0,0.25);
+        border: 1px solid #e0e0e0;
+        width: 230px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 # --------------------------------------------------------------------------
 # Load structure & Supabase client
 # --------------------------------------------------------------------------
@@ -176,52 +214,72 @@ st.caption("Isi kolom **Remarks** jika ada temuan pada suatu poin. Begitu Remark
 remarks_state = st.session_state["remarks"]
 
 
+ROW_COLS = [0.5, 4.2, 0.9, 0.9, 3.5]
+
+
+def _safe_remark(v) -> str:
+    """Selalu kembalikan string bersih, walau v ternyata None/NaN/float."""
+    if v is None:
+        return ""
+    if isinstance(v, float):
+        return ""  # NaN or stray float -> treat as empty
+    return str(v)
+
+
+def render_header_row():
+    h = st.columns(ROW_COLS)
+    h[0].markdown("**No**")
+    h[1].markdown("**Deskripsi**")
+    h[2].markdown("**Basic**")
+    h[3].markdown("**Actual**")
+    h[4].markdown("**Remarks**")
+
+
 def render_table(items: list[dict], key: str):
-    rows = []
+    render_header_row()
     for it in items:
-        r = remarks_state.get(str(it["number"]), "")
-        actual = 0 if r and r.strip() else it["basic"]
-        rows.append({
-            "No": it["number"],
-            "Deskripsi": it["desc"],
-            "Basic Score": it["basic"],
-            "Actual Score": actual,
-            "Remarks": r,
-        })
-    df = pd.DataFrame(rows)
-    edited = st.data_editor(
-        df,
-        key=key,
-        hide_index=True,
-        use_container_width=True,
-        disabled=["No", "Deskripsi", "Basic Score", "Actual Score"],
-        column_config={
-            "No": st.column_config.NumberColumn(width="small"),
-            "Deskripsi": st.column_config.TextColumn(width="large"),
-            "Basic Score": st.column_config.NumberColumn(width="small"),
-            "Actual Score": st.column_config.NumberColumn(width="small"),
-            "Remarks": st.column_config.TextColumn(width="large"),
-        },
-    )
-    # sync edits back into remarks_state
-    for _, row in edited.iterrows():
-        remarks_state[str(row["No"])] = row["Remarks"] or ""
+        number = str(it["number"])
+        current = _safe_remark(remarks_state.get(number, ""))
+        actual = 0 if current.strip() else it["basic"]
+
+        cols = st.columns(ROW_COLS)
+        cols[0].markdown(str(it["number"]))
+        cols[1].markdown(it["desc"])  # wraps naturally, no truncation
+        cols[2].markdown(str(it["basic"]))
+        if actual == 0:
+            cols[3].markdown(f":red[**{actual}**]")
+        else:
+            cols[3].markdown(str(actual))
+
+        new_val = cols[4].text_area(
+            "Remarks",
+            value=current,
+            key=f"{key}_remark_{number}",
+            label_visibility="collapsed",
+            height=68,
+        )
+        remarks_state[number] = _safe_remark(new_val)
+        st.markdown("<hr style='margin:4px 0;opacity:0.15'>", unsafe_allow_html=True)
+
+
+def category_banner(name: str):
+    st.markdown(f"<div class='cat-banner'>{name}</div>", unsafe_allow_html=True)
 
 
 for cat in structure:
     if cat["name"] == "ETC":
         note = cat["note"]
-        with st.expander(f"ETC"):
-            st.info(f"{note['note_number']}. {note['note_text']}")
+        category_banner("ETC")
+        st.info(f"{note['note_number']}. {note['note_text']}")
         continue
 
-    with st.expander(cat["name"], expanded=False):
-        if "subcategories" in cat:
-            for sub in cat["subcategories"]:
-                st.markdown(f"**{sub['name']}**")
-                render_table(sub["items"], key=f"editor_{sub['row']}")
-        else:
-            render_table(cat["items"], key=f"editor_{cat['row']}")
+    category_banner(cat["name"])
+    if "subcategories" in cat:
+        for sub in cat["subcategories"]:
+            st.markdown(f"<div class='subcat-label'>{sub['name']}</div>", unsafe_allow_html=True)
+            render_table(sub["items"], key=f"editor_{sub['row']}")
+    else:
+        render_table(cat["items"], key=f"editor_{cat['row']}")
 
 st.session_state["remarks"] = remarks_state
 
@@ -242,7 +300,7 @@ summary_df = pd.DataFrame([
     }
     for c in result["categories"]
 ])
-st.dataframe(summary_df, hide_index=True, use_container_width=True)
+st.dataframe(summary_df, hide_index=True, width="stretch")
 
 m1, m2, m3 = st.columns(3)
 m1.metric("TOTAL SCORE (E175)", round(result["grand_percent_sum"], 2))
@@ -295,10 +353,10 @@ def build_excel_bytes() -> bytes:
     return buf.read()
 
 
-col1, col2 = st.columns(2)
+st.markdown("<div style='height:140px'></div>", unsafe_allow_html=True)  # spacer agar tidak ketutup panel melayang
 
-with col1:
-    if st.button("💾 Save for Later", use_container_width=True):
+with st.container(key="floating_actions"):
+    if st.button("💾 Save for Later", width="stretch"):
         if supabase is None:
             st.error("Supabase belum terkoneksi, tidak bisa menyimpan.")
         elif not st.session_state["store_name"] or not st.session_state["date1"]:
@@ -320,11 +378,10 @@ with col1:
                 st.query_params["store"] = st.session_state["store_name"]
                 st.query_params["date"] = st.session_state["date1"]
                 st.session_state["loaded_key"] = (st.session_state["store_name"], st.session_state["date1"])
-                st.success("Tersimpan. Data akan tetap ada walau browser di-refresh.")
+                st.success("Tersimpan.")
             except Exception as e:
                 st.error(f"Gagal menyimpan: {e}")
 
-with col2:
     excel_bytes = build_excel_bytes()
     fname = f"Audit_{st.session_state['store_name'] or 'Store'}_{st.session_state['date1'] or 'Date'}.xlsx".replace(" ", "_")
     st.download_button(
@@ -332,5 +389,5 @@ with col2:
         data=excel_bytes,
         file_name=fname,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
+        width="stretch",
     )
