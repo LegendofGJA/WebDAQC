@@ -1,0 +1,3 @@
+supabase
+Project name       :  webdaqc
+Database password  :  AeCVVyZZrLWs9omz
