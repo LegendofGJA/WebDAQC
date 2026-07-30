@@ -36,7 +36,7 @@ utuh (tidak diubah) saat file di-download.
 ## Deploy (Streamlit Community Cloud)
 
 1. Push folder ini ke GitHub repo.
-2. Buka https://share.streamlit.io → New app → pilih repo, file `app.py`.
+2. Buka https://share.streamlit.io → New app → pilih repo, file `app.py` ; https://ateazzi.streamlit.app/
 3. Di menu **Secrets** aplikasi, tempel isi `secrets.toml` (SUPABASE_URL,
    SUPABASE_KEY).
 4. Deploy.
