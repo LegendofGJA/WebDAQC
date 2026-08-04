@@ -45,7 +45,7 @@ def list_saved_drafts(limit: int = 500):
     try:
         resp = (
             supabase.table(DRAFT_TABLE)
-            .select("store_name, audit_date, updated_at")
+            .select("id, store_name, audit_date, updated_at")
             .order("updated_at", desc=True)
             .limit(limit)
             .execute()
@@ -80,6 +80,24 @@ def save_draft(payload: dict):
     return (
         supabase.table(DRAFT_TABLE)
         .upsert(payload, on_conflict="store_name,audit_date")
+        .execute()
+    )
+
+
+def update_draft_by_id(draft_id: str, payload: dict):
+    """
+    Update draft berdasarkan id (bukan store_name+audit_date). Dipakai
+    supaya mengganti Store Name / Date pada draft yang sedang aktif TIDAK
+    membuat baris baru di database -- baris yang sama tetap diupdate,
+    hanya "berganti nama".
+    """
+    supabase = get_supabase_client()
+    if supabase is None:
+        raise RuntimeError("Supabase belum terkoneksi.")
+    return (
+        supabase.table(DRAFT_TABLE)
+        .update(payload)
+        .eq("id", draft_id)
         .execute()
     )
 
