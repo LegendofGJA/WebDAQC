@@ -12,6 +12,7 @@ from audit_core import (
     update_draft_by_id,
     build_filled_workbook,
     workbook_to_bytes,
+    log_audit_traffic,
 )
 
 st.set_page_config(page_title="DETAIL AUDIT", page_icon="📋", layout="wide")
@@ -94,9 +95,7 @@ def _safe_remark(v) -> str:
 
 def _sync_remark_widgets(remarks: dict):
     """Timpa LANGSUNG nilai di setiap widget key remark sesuai data
-    yang baru dimuat. Lebih aman dari sekadar hapus key, karena
-    Streamlit tetap menyimpan internal state widget walau key-nya
-    dihapus dari session_state."""
+    yang baru dimuat."""
     for cat in structure:
         if cat.get("name") == "ETC":
             continue
@@ -132,7 +131,6 @@ def load_into_state(row: dict):
     st.session_state["remarks"] = new_remarks
     st.session_state["loaded_key"] = (row.get("store_name"), row.get("audit_date"))
     st.session_state["loaded_id"] = row.get("id")
-    # ── KUNCI PERBAIKAN: timpa langsung semua widget key ──
     _sync_remark_widgets(new_remarks)
 
 
@@ -238,10 +236,6 @@ def render_table(items: list[dict], key: str):
         number = str(it["number"])
         widget_key = f"{key}_remark_{number}"
 
-        # Widget key sudah di-set oleh _sync_remark_widgets() saat
-        # load draft / reset, jadi selalu ada di session_state dengan
-        # nilai yang benar. Untuk item baru (belum pernah render),
-        # fallback ke remarks_state.
         if widget_key in st.session_state:
             current = _safe_remark(st.session_state[widget_key])
         else:
@@ -303,6 +297,9 @@ m3.metric("GRADING", result["grade"])
 
 st.markdown("<div style='height:110px'></div>", unsafe_allow_html=True)
 
+# ── Format score untuk log ──
+_score_str = f"{round(result['final_score'], 2)}, {result['grade']}"
+
 with st.container(key="floating_actions"):
     fc1, fc2 = st.columns(2)
     with fc1:
@@ -322,6 +319,14 @@ with st.container(key="floating_actions"):
                     st.query_params["store"] = st.session_state["store_name"]
                     st.query_params["date"] = st.session_state["date1"]
                     st.session_state["loaded_key"] = (st.session_state["store_name"], st.session_state["date1"])
+                    # ── LOG: Save ──
+                    log_audit_traffic(
+                        st.session_state.get("auditor", ""),
+                        st.session_state.get("store_name", ""),
+                        st.session_state.get("date1", ""),
+                        _score_str,
+                        "Save",
+                    )
                     st.success("Tersimpan!")
                 except Exception as e:
                     st.error(f"Gagal: {e}")
@@ -332,12 +337,20 @@ with st.container(key="floating_actions"):
             st.session_state["auditor"], st.session_state["pic_on_duty"], remarks_state,
         )
         fname = f"Audit_{st.session_state['store_name'] or 'Store'}_{st.session_state['date1'] or 'Date'}.xlsx".replace(" ", "_")
-        st.download_button(
+        if st.download_button(
             "⬇️",
             data=workbook_to_bytes(wb),
             file_name=fname,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             help="Download Excel",
-        )
+        ):
+            # ── LOG: Download ──
+            log_audit_traffic(
+                st.session_state.get("auditor", ""),
+                st.session_state.get("store_name", ""),
+                st.session_state.get("date1", ""),
+                _score_str,
+                "Download",
+            )
 
 inject_footer()
