@@ -239,7 +239,18 @@ def render_table(items: list[dict], key: str):
     render_header_row()
     for it in items:
         number = str(it["number"])
-        current = _safe_remark(remarks_state.get(number, ""))
+        widget_key = f"{key}_remark_{number}"
+
+        # PENTING: kalau widget ini sudah pernah dirender, session_state sudah
+        # berisi nilai TERBARU (hasil ketikan yang baru saja memicu rerun ini)
+        # SEBELUM baris ini digambar ulang. Baca dari sini, bukan dari
+        # remarks_state, supaya Actual Score langsung sinkron di rerun yang
+        # sama -- tidak lagi telat satu langkah.
+        if widget_key in st.session_state:
+            current = _safe_remark(st.session_state[widget_key])
+        else:
+            current = _safe_remark(remarks_state.get(number, ""))
+
         actual = 0 if current.strip() else it["basic"]
 
         cols = st.columns(ROW_COLS)
