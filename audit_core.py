@@ -115,6 +115,18 @@ def delete_draft(store_name: str, audit_date: str):
     )
 
 
+def delete_all_drafts():
+    """Hapus SEMUA draft dari tabel audit_drafts."""
+    supabase = get_supabase_client()
+    if supabase is None:
+        raise RuntimeError("Supabase belum terkoneksi.")
+    resp = supabase.table(DRAFT_TABLE).select("id").execute()
+    ids = [r["id"] for r in (resp.data or [])]
+    if ids:
+        return supabase.table(DRAFT_TABLE).delete().in_("id", ids).execute()
+    return None
+
+
 def build_filled_workbook(
     store_name: str,
     date1: str,
@@ -166,7 +178,7 @@ def workbook_to_bytes(wb: openpyxl.Workbook) -> bytes:
 
 def log_audit_traffic(auditor: str, store_name: str, audit_date: str,
                       score_info: str, action: str):
-    """Simpan log aktivitas audit (Save/Download) ke tabel audit_traffic_log."""
+    """Simpan log aktivitas audit (Save/Download/Update) ke tabel audit_traffic_log."""
     supabase = get_supabase_client()
     if supabase is None:
         return
