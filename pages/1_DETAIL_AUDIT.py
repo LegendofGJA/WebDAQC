@@ -9,6 +9,7 @@ from audit_core import (
     list_saved_drafts,
     fetch_draft,
     save_draft,
+    update_draft_by_id,
     build_filled_workbook,
     workbook_to_bytes,
 )
@@ -43,17 +44,27 @@ st.markdown(
         bottom: 14px;
         z-index: 9999;
         background: var(--surface);
-        padding: 8px;
-        border-radius: 10px;
+        padding: 6px;
+        border-radius: 999px;
         box-shadow: 0 4px 18px rgba(0,0,0,0.35);
         border: 1px solid var(--border);
-        width: 150px;
+        width: auto;
+        display: inline-block;
+    }
+    div.st-key-floating_actions [data-testid="stHorizontalBlock"] {
+        gap: 6px !important;
     }
     div.st-key-floating_actions button,
     div.st-key-floating_actions a {
-        font-size: 0.78rem !important;
-        padding: 0.4rem 0.6rem !important;
-        margin-bottom: 4px !important;
+        font-size: 1.1rem !important;
+        padding: 0.45rem !important;
+        width: 42px !important;
+        height: 42px !important;
+        border-radius: 50% !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        margin: 0 !important;
     }
     </style>
     """,
@@ -65,7 +76,8 @@ supabase = get_supabase_client()
 
 defaults = {
     "store_name": "", "date1": "", "date2": "",
-    "auditor": "", "pic_on_duty": "", "remarks": {}, "loaded_key": None,
+    "auditor": "", "pic_on_duty": "", "remarks": {},
+    "loaded_key": None, "loaded_id": None,
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -86,6 +98,7 @@ def load_into_state(row: dict):
     st.session_state["pic_on_duty"] = row.get("pic_on_duty", "") or ""
     st.session_state["remarks"] = row.get("remarks", {}) or {}
     st.session_state["loaded_key"] = (row.get("store_name"), row.get("audit_date"))
+    st.session_state["loaded_id"] = row.get("id")
 
 
 qp = st.query_params
@@ -116,7 +129,7 @@ with st.expander("📂 Buka data toko yang tersimpan (lanjutkan audit)"):
             for r in rows
         }
         choice = st.selectbox("Pilih draft", ["-- pilih --"] + list(options.keys()))
-        col_a, col_b = st.columns(2)
+        col_a, col_b, col_c = st.columns(3)
         with col_a:
             if st.button("🔄 Muat Draft", disabled=(choice == "-- pilih --")):
                 picked = options[choice]
@@ -130,6 +143,29 @@ with st.expander("📂 Buka data toko yang tersimpan (lanjutkan audit)"):
             if st.button("🆕 Mulai Audit Baru"):
                 reset_form()
                 st.rerun()
+        with col_c:
+            update_disabled = st.session_state["loaded_id"] is None
+            if st.button("✏️ Update Draft Ini", disabled=update_disabled):
+                try:
+                    update_draft_by_id(st.session_state["loaded_id"], {
+                        "store_name": st.session_state["store_name"],
+                        "audit_date": st.session_state["date1"],
+                        "date2": st.session_state["date2"],
+                        "auditor": st.session_state["auditor"],
+                        "pic_on_duty": st.session_state["pic_on_duty"],
+                        "remarks": st.session_state["remarks"],
+                    })
+                    st.session_state["loaded_key"] = (st.session_state["store_name"], st.session_state["date1"])
+                    st.query_params["store"] = st.session_state["store_name"]
+                    st.query_params["date"] = st.session_state["date1"]
+                    st.success("Draft ini berhasil diperbarui (nama/tanggal ikut berubah kalau memang diubah, tidak membuat draft baru).")
+                except Exception as e:
+                    st.error(f"Gagal update: {e}")
+        st.caption(
+            "**Muat Draft** = buka draft lain. **Update Draft Ini** = simpan perubahan "
+            "(termasuk ganti Store Name/Date) ke draft yang sedang aktif di form ini, "
+            "tanpa membuat draft baru. Aktif hanya kalau ada draft yang sedang dimuat."
+        )
     else:
         st.caption("Belum ada draft tersimpan.")
 
@@ -237,37 +273,40 @@ m3.metric("GRADING", result["grade"])
 st.markdown("<div style='height:110px'></div>", unsafe_allow_html=True)
 
 with st.container(key="floating_actions"):
-    if st.button("💾 Save", width="stretch"):
-        if not st.session_state["store_name"] or not st.session_state["date1"]:
-            st.error("STORE NAME & DATE wajib diisi.")
-        else:
-            try:
-                save_draft({
-                    "store_name": st.session_state["store_name"],
-                    "audit_date": st.session_state["date1"],
-                    "date2": st.session_state["date2"],
-                    "auditor": st.session_state["auditor"],
-                    "pic_on_duty": st.session_state["pic_on_duty"],
-                    "remarks": remarks_state,
-                })
-                st.query_params["store"] = st.session_state["store_name"]
-                st.query_params["date"] = st.session_state["date1"]
-                st.session_state["loaded_key"] = (st.session_state["store_name"], st.session_state["date1"])
-                st.success("Tersimpan!")
-            except Exception as e:
-                st.error(f"Gagal: {e}")
+    fc1, fc2 = st.columns(2)
+    with fc1:
+        if st.button("💾", help="Save draft ke Supabase"):
+            if not st.session_state["store_name"] or not st.session_state["date1"]:
+                st.error("STORE NAME & DATE wajib diisi.")
+            else:
+                try:
+                    save_draft({
+                        "store_name": st.session_state["store_name"],
+                        "audit_date": st.session_state["date1"],
+                        "date2": st.session_state["date2"],
+                        "auditor": st.session_state["auditor"],
+                        "pic_on_duty": st.session_state["pic_on_duty"],
+                        "remarks": remarks_state,
+                    })
+                    st.query_params["store"] = st.session_state["store_name"]
+                    st.query_params["date"] = st.session_state["date1"]
+                    st.session_state["loaded_key"] = (st.session_state["store_name"], st.session_state["date1"])
+                    st.success("Tersimpan!")
+                except Exception as e:
+                    st.error(f"Gagal: {e}")
 
-    wb = build_filled_workbook(
-        st.session_state["store_name"], st.session_state["date1"], st.session_state["date2"],
-        st.session_state["auditor"], st.session_state["pic_on_duty"], remarks_state,
-    )
-    fname = f"Audit_{st.session_state['store_name'] or 'Store'}_{st.session_state['date1'] or 'Date'}.xlsx".replace(" ", "_")
-    st.download_button(
-        "⬇️ Download",
-        data=workbook_to_bytes(wb),
-        file_name=fname,
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        width="stretch",
-    )
+    with fc2:
+        wb = build_filled_workbook(
+            st.session_state["store_name"], st.session_state["date1"], st.session_state["date2"],
+            st.session_state["auditor"], st.session_state["pic_on_duty"], remarks_state,
+        )
+        fname = f"Audit_{st.session_state['store_name'] or 'Store'}_{st.session_state['date1'] or 'Date'}.xlsx".replace(" ", "_")
+        st.download_button(
+            "⬇️",
+            data=workbook_to_bytes(wb),
+            file_name=fname,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            help="Download Excel",
+        )
 
 inject_footer()
