@@ -192,3 +192,28 @@ def log_audit_traffic(auditor: str, store_name: str, audit_date: str,
         }).execute()
     except Exception:
         pass
+
+
+def delete_all_audit_logs():
+    """Hapus SEMUA log dari tabel audit_traffic_log."""
+    supabase = get_supabase_client()
+    if supabase is None:
+        raise RuntimeError("Supabase belum terkoneksi.")
+    resp = supabase.table("audit_traffic_log").select("id").execute()
+    ids = [r["id"] for r in (resp.data or [])]
+    if ids:
+        return supabase.table("audit_traffic_log").delete().in_("id", ids).execute()
+    return None
+
+
+def delete_audit_log_by_id(log_id: str):
+    """Hapus satu log berdasarkan id."""
+    supabase = get_supabase_client()
+    if supabase is None:
+        raise RuntimeError("Supabase belum terkoneksi.")
+    return (
+        supabase.table("audit_traffic_log")
+        .delete()
+        .eq("id", log_id)
+        .execute()
+    )
