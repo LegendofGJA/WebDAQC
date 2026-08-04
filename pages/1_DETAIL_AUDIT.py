@@ -84,31 +84,56 @@ for k, v in defaults.items():
         st.session_state[k] = v
 
 
-def _clear_remark_widget_keys():
-    """Hapus semua widget key remark dari session_state supaya
-    render_table() tidak membaca nilai stale dari render sebelumnya."""
-    stale = [k for k in st.session_state if "_remark_" in str(k)]
-    for k in stale:
-        del st.session_state[k]
+def _safe_remark(v) -> str:
+    if v is None:
+        return ""
+    if isinstance(v, float):
+        return ""
+    return str(v)
+
+
+def _sync_remark_widgets(remarks: dict):
+    """Timpa LANGSUNG nilai di setiap widget key remark sesuai data
+    yang baru dimuat. Lebih aman dari sekadar hapus key, karena
+    Streamlit tetap menyimpan internal state widget walau key-nya
+    dihapus dari session_state."""
+    for cat in structure:
+        if cat.get("name") == "ETC":
+            continue
+        if "subcategories" in cat:
+            for sub in cat["subcategories"]:
+                prefix = f"editor_{sub['row']}"
+                for it in sub["items"]:
+                    num = str(it["number"])
+                    wk = f"{prefix}_remark_{num}"
+                    st.session_state[wk] = _safe_remark(remarks.get(num, ""))
+        else:
+            prefix = f"editor_{cat['row']}"
+            for it in cat.get("items", []):
+                num = str(it["number"])
+                wk = f"{prefix}_remark_{num}"
+                st.session_state[wk] = _safe_remark(remarks.get(num, ""))
 
 
 def reset_form():
-    _clear_remark_widget_keys()
+    _sync_remark_widgets({})
     for k, v in defaults.items():
         st.session_state[k] = v if not isinstance(v, dict) else {}
     st.query_params.clear()
 
 
 def load_into_state(row: dict):
-    _clear_remark_widget_keys()  # ← FIX: bersihkan key remark lama
     st.session_state["store_name"] = row.get("store_name", "") or ""
     st.session_state["date1"] = row.get("audit_date", "") or ""
     st.session_state["date2"] = row.get("date2", "") or ""
     st.session_state["auditor"] = row.get("auditor", "") or ""
     st.session_state["pic_on_duty"] = row.get("pic_on_duty", "") or ""
-    st.session_state["remarks"] = row.get("remarks", {}) or {}
+    new_remarks = row.get("remarks", {}) or {}
+    st.session_state["remarks"] = new_remarks
     st.session_state["loaded_key"] = (row.get("store_name"), row.get("audit_date"))
     st.session_state["loaded_id"] = row.get("id")
+    # ── KUNCI PERBAIKAN: timpa langsung semua widget key ──
+    _sync_remark_widgets(new_remarks)
 
 
 qp = st.query_params
@@ -198,14 +223,6 @@ remarks_state = st.session_state["remarks"]
 ROW_COLS = [0.5, 4.2, 0.9, 0.9, 3.5]
 
 
-def _safe_remark(v) -> str:
-    if v is None:
-        return ""
-    if isinstance(v, float):
-        return ""
-    return str(v)
-
-
 def render_header_row():
     h = st.columns(ROW_COLS)
     h[0].markdown("**No**")
@@ -221,8 +238,10 @@ def render_table(items: list[dict], key: str):
         number = str(it["number"])
         widget_key = f"{key}_remark_{number}"
 
-        # Selalu ambil dari remarks_state (sumber kebenaran setelah load_into_state
-        # membersihkan widget key lama via _clear_remark_widget_keys)
+        # Widget key sudah di-set oleh _sync_remark_widgets() saat
+        # load draft / reset, jadi selalu ada di session_state dengan
+        # nilai yang benar. Untuk item baru (belum pernah render),
+        # fallback ke remarks_state.
         if widget_key in st.session_state:
             current = _safe_remark(st.session_state[widget_key])
         else:
