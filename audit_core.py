@@ -162,3 +162,21 @@ def workbook_to_bytes(wb: openpyxl.Workbook) -> bytes:
     wb.save(buf)
     buf.seek(0)
     return buf.read()
+
+
+def log_audit_traffic(auditor: str, store_name: str, audit_date: str,
+                      score_info: str, action: str):
+    """Simpan log aktivitas audit (Save/Download) ke tabel audit_traffic_log."""
+    supabase = get_supabase_client()
+    if supabase is None:
+        return
+    try:
+        supabase.table("audit_traffic_log").insert({
+            "auditor": auditor or "Unknown",
+            "store_name": store_name or "Unknown",
+            "audit_date": audit_date or "Unknown",
+            "score_info": score_info,
+            "action": action,
+        }).execute()
+    except Exception:
+        pass
