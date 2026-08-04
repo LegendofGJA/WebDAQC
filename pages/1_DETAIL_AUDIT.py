@@ -18,7 +18,7 @@ st.set_page_config(page_title="DETAIL AUDIT", page_icon="📋", layout="wide")
 inject_css()
 inject_sidebar_brand()
 
-# Panel tombol kecil melayang di kiri bawah (bukan full width lagi)
+# Panel tombol kecil melayang di kiri bawah
 st.markdown(
     """
     <style>
@@ -84,13 +84,23 @@ for k, v in defaults.items():
         st.session_state[k] = v
 
 
+def _clear_remark_widget_keys():
+    """Hapus semua widget key remark dari session_state supaya
+    render_table() tidak membaca nilai stale dari render sebelumnya."""
+    stale = [k for k in st.session_state if "_remark_" in str(k)]
+    for k in stale:
+        del st.session_state[k]
+
+
 def reset_form():
+    _clear_remark_widget_keys()
     for k, v in defaults.items():
         st.session_state[k] = v if not isinstance(v, dict) else {}
     st.query_params.clear()
 
 
 def load_into_state(row: dict):
+    _clear_remark_widget_keys()  # ← FIX: bersihkan key remark lama
     st.session_state["store_name"] = row.get("store_name", "") or ""
     st.session_state["date1"] = row.get("audit_date", "") or ""
     st.session_state["date2"] = row.get("date2", "") or ""
@@ -211,6 +221,8 @@ def render_table(items: list[dict], key: str):
         number = str(it["number"])
         widget_key = f"{key}_remark_{number}"
 
+        # Selalu ambil dari remarks_state (sumber kebenaran setelah load_into_state
+        # membersihkan widget key lama via _clear_remark_widget_keys)
         if widget_key in st.session_state:
             current = _safe_remark(st.session_state[widget_key])
         else:
