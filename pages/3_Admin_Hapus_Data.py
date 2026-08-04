@@ -1,44 +1,20 @@
+import pandas as pd
 import streamlit as st
 
 from style import inject_css, inject_sidebar_brand, inject_footer
-from audit_core import list_saved_drafts, delete_draft, update_draft_by_id
+from audit_core import (
+    list_saved_drafts,
+    fetch_draft,
+    delete_draft,
+    update_draft_by_id,
+    delete_all_drafts,
+)
 
-st.set_page_config(page_title="Admin - Hapus Data", page_icon="🔐", layout="wide")
+st.set_page_config(page_title="Admin - Kelola Data", page_icon="🔐", layout="wide")
 inject_css()
 inject_sidebar_brand()
 
-st.markdown(
-    """
-    <style>
-    .admin-row {
-        padding: 3px 0;
-        font-size: 0.8rem;
-    }
-    .admin-row [data-testid="stButton"] button {
-        font-size: 0.72rem !important;
-        padding: 0.25rem 0.5rem !important;
-        min-height: 0 !important;
-    }
-    .admin-row [data-testid="stTextInput"] input {
-        font-size: 0.78rem !important;
-        padding: 0.3rem 0.5rem !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-st.markdown(
-    """
-    <div class="page-head">
-        <div class="page-head-icon">🔐</div>
-        <h2>Admin — Kelola Data Draft</h2>
-        <p>Khusus master/admin. Edit atau hapus draft DETAIL AUDIT dari Supabase.</p>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
+# ── Password Protection ──
 if "admin_ok" not in st.session_state:
     st.session_state.admin_ok = False
 
@@ -58,6 +34,18 @@ if not st.session_state.admin_ok:
             st.error("Password salah.")
     st.stop()
 
+# ── Header ──
+st.markdown(
+    """
+    <div class="page-head">
+        <div class="page-head-icon">🔐</div>
+        <h2>Admin — Kelola Data Draft</h2>
+        <p>Khusus master/admin. Edit, hapus, atau hapus semua draft DETAIL AUDIT dari Supabase.</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
 st.success("Login admin berhasil.")
 if st.button("Keluar"):
     st.session_state.admin_ok = False
@@ -65,63 +53,133 @@ if st.button("Keluar"):
 
 st.markdown("---")
 
+# ── Load Data ──
 rows = list_saved_drafts(limit=1000)
+
 if not rows:
     st.caption("Belum ada draft tersimpan.")
-else:
-    st.caption(f"Total {len(rows)} draft tersimpan.")
-    for r in rows:
-        draft_id = r["id"]
-        edit_key = f"edit_{draft_id}"
-        confirm_key = f"confirm_{draft_id}"
+    inject_footer()
+    st.stop()
 
-        with st.container():
-            st.markdown('<div class="admin-row">', unsafe_allow_html=True)
+# ── TAMPILAN TABEL (seperti Traffic Log) ──
+st.caption(f"Total {len(rows)} draft tersimpan.")
 
-            if st.session_state.get(edit_key):
-                # --- MODE EDIT: ubah Store Name & Date ---
-                ce1, ce2, ce3, ce4 = st.columns([2.5, 2, 0.8, 0.8])
-                new_name = ce1.text_input("Store Name", value=r["store_name"], key=f"name_{draft_id}", label_visibility="collapsed")
-                new_date = ce2.text_input("Date", value=r["audit_date"], key=f"date_{draft_id}", label_visibility="collapsed")
-                if ce3.button("💾", key=f"savebtn_{draft_id}", help="Simpan perubahan"):
-                    try:
-                        update_draft_by_id(draft_id, {
-                            "store_name": new_name.strip(),
-                            "audit_date": new_date.strip(),
-                        })
-                        st.success("Diperbarui.")
-                        st.session_state[edit_key] = False
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Gagal: {e}")
-                if ce4.button("✖️", key=f"cancelbtn_{draft_id}", help="Batal"):
-                    st.session_state[edit_key] = False
+df = pd.DataFrame(rows)
+if "updated_at" in df.columns:
+    df["updated_at"] = df["updated_at"].astype(str).str[:16].str.replace("T", " ")
+df_display = df.rename(columns={
+    "store_name": "Store Name",
+    "audit_date": "Date",
+    "updated_at": "Last Update",
+})
+df_display = df_display[["Store Name", "Date", "Last Update"]]
+
+with st.expander("🔍 Filter"):
+    f1, f2 = st.columns(2)
+    store_filter = f1.text_input("Filter Store Name")
+    date_filter = f2.text_input("Filter Date")
+
+if store_filter:
+    df_display = df_display[df_display["Store Name"].astype(str).str.contains(store_filter, case=False, na=False)]
+if date_filter:
+    df_display = df_display[df_display["Date"].astype(str).str.contains(date_filter, case=False, na=False)]
+
+st.dataframe(df_display, hide_index=True, width="stretch")
+
+st.markdown("---")
+
+# ── HAPUS SEMUA DATA ──
+st.markdown(
+    """
+    <div style="background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.2);
+         border-radius:10px; padding:14px 18px; margin-bottom:18px;">
+        <p style="color:#fca5a5; font-size:0.82rem; margin:0; line-height:1.5;">
+            <b>Hapus Semua</b> akan menghapus SELURUH draft yang tersimpan. Aksi ini tidak bisa dibatalkan.
+        </p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+col_del_all_1, col_del_all_2 = st.columns([1, 3])
+with col_del_all_1:
+    if st.button("🗑️ Hapus Semua Data", type="primary"):
+        st.session_state["confirm_delete_all"] = True
+
+if st.session_state.get("confirm_delete_all"):
+    st.warning(f"Yakin ingin menghapus SEMUA {len(rows)} draft? Ketik **HAPUS** untuk konfirmasi.")
+    confirm_text = st.text_input("Ketik HAPUS untuk konfirmasi", key="delete_all_confirm_input")
+    c_yakin, c_batal = st.columns(2)
+    with c_yakin:
+        if st.button("⚠️ Ya, Hapus Semua", disabled=(confirm_text.strip().upper() != "HAPUS")):
+            try:
+                delete_all_drafts()
+                st.success(f"Semua {len(rows)} draft berhasil dihapus.")
+                st.session_state["confirm_delete_all"] = False
+                st.rerun()
+            except Exception as e:
+                st.error(f"Gagal: {e}")
+    with c_batal:
+        if st.button("✖️ Batal"):
+            st.session_state["confirm_delete_all"] = False
+            st.rerun()
+
+st.markdown("---")
+
+# ── EDIT / HAPUS PER ITEM ──
+st.markdown("##### Edit atau Hapus Draft Individual")
+
+options = {
+    f"{r['store_name']}  —  {r['audit_date']}": r for r in rows
+}
+pick = st.selectbox("Pilih draft:", ["-- pilih --"] + list(options.keys()), key="admin_pick")
+
+if pick != "-- pilih --":
+    picked = options[pick]
+    draft_id = picked["id"]
+    full = fetch_draft(picked["store_name"], picked["audit_date"]) or picked
+
+    e1, e2, e3 = st.columns(3)
+    with e1:
+        new_name = st.text_input("Store Name", value=full.get("store_name", ""), key="admin_edit_name")
+    with e2:
+        new_date = st.text_input("Date", value=full.get("audit_date", ""), key="admin_edit_date")
+    with e3:
+        new_auditor = st.text_input("Auditor", value=full.get("auditor", ""), key="admin_edit_auditor")
+
+    btn_edit, btn_delete = st.columns(2)
+    with btn_edit:
+        if st.button("💾 Simpan Perubahan", use_container_width=True):
+            try:
+                update_draft_by_id(draft_id, {
+                    "store_name": new_name.strip(),
+                    "audit_date": new_date.strip(),
+                    "auditor": new_auditor.strip(),
+                })
+                st.success(f"Draft diperbarui: {new_name.strip()} — {new_date.strip()}")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Gagal: {e}")
+
+    with btn_delete:
+        if st.button("🗑️ Hapus Draft Ini", use_container_width=True):
+            st.session_state[f"confirm_del_{draft_id}"] = True
+
+    if st.session_state.get(f"confirm_del_{draft_id}"):
+        st.warning(f"Yakin hapus draft **{picked['store_name']} — {picked['audit_date']}**?")
+        c_y, c_n = st.columns(2)
+        with c_y:
+            if st.button("⚠️ Ya, Hapus", key=f"yes_{draft_id}"):
+                try:
+                    delete_draft(picked["store_name"], picked["audit_date"])
+                    st.success("Draft dihapus.")
+                    st.session_state[f"confirm_del_{draft_id}"] = False
                     st.rerun()
-            else:
-                c1, c2, c3, c4 = st.columns([2.5, 2, 0.8, 0.8])
-                c1.markdown(f"**{r['store_name']}**")
-                c2.markdown(
-                    f"{r['audit_date']}  \n<span style='font-size:0.68rem;color:#8888a5;'>update: {r['updated_at'][:16].replace('T',' ')}</span>",
-                    unsafe_allow_html=True,
-                )
-                if c3.button("✏️", key=f"editbtn_{draft_id}", help="Edit nama/tanggal"):
-                    st.session_state[edit_key] = True
-                    st.rerun()
-
-                if st.session_state.get(confirm_key):
-                    if c4.button("⚠️", key=f"yesdel_{draft_id}", help="Yakin hapus?"):
-                        try:
-                            delete_draft(r["store_name"], r["audit_date"])
-                            st.success(f"Draft '{r['store_name']} — {r['audit_date']}' dihapus.")
-                            st.session_state[confirm_key] = False
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Gagal hapus: {e}")
-                else:
-                    if c4.button("🗑️", key=f"delbtn_{draft_id}", help="Hapus draft"):
-                        st.session_state[confirm_key] = True
-                        st.rerun()
-
-            st.markdown("</div><hr style='margin:2px 0;opacity:0.12'>", unsafe_allow_html=True)
+                except Exception as e:
+                    st.error(f"Gagal: {e}")
+        with c_n:
+            if st.button("✖️ Batal", key=f"no_{draft_id}"):
+                st.session_state[f"confirm_del_{draft_id}"] = False
+                st.rerun()
 
 inject_footer()
