@@ -100,7 +100,7 @@ def reset_form():
 
 
 def load_into_state(row: dict):
-    _clear_remark_widget_keys()  # ← FIX: bersihkan key remark lama
+    _clear_remark_widget_keys()
     st.session_state["store_name"] = row.get("store_name", "") or ""
     st.session_state["date1"] = row.get("audit_date", "") or ""
     st.session_state["date2"] = row.get("date2", "") or ""
@@ -221,8 +221,6 @@ def render_table(items: list[dict], key: str):
         number = str(it["number"])
         widget_key = f"{key}_remark_{number}"
 
-        # Selalu ambil dari remarks_state (sumber kebenaran setelah load_into_state
-        # membersihkan widget key lama via _clear_remark_widget_keys)
         if widget_key in st.session_state:
             current = _safe_remark(st.session_state[widget_key])
         else:
