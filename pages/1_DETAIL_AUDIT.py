@@ -191,6 +191,14 @@ with st.expander("📂 Buka data toko yang tersimpan (lanjutkan audit)"):
                     st.session_state["loaded_key"] = (st.session_state["store_name"], st.session_state["date1"])
                     st.query_params["store"] = st.session_state["store_name"]
                     st.query_params["date"] = st.session_state["date1"]
+                    # ── LOG: Update ──
+                    log_audit_traffic(
+                        st.session_state.get("auditor", ""),
+                        st.session_state.get("store_name", ""),
+                        st.session_state.get("date1", ""),
+                        _score_str,
+                        "Update",
+                    )
                     st.success("Draft ini berhasil diperbarui (nama/tanggal ikut berubah kalau memang diubah, tidak membuat draft baru).")
                 except Exception as e:
                     st.error(f"Gagal update: {e}")
