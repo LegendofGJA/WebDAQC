@@ -26,3 +26,6 @@ create policy "public insert" on audit_drafts
 
 create policy "public update" on audit_drafts
   for update using (true);
+
+create policy "public delete" on audit_drafts
+  for delete using (true);
