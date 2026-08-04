@@ -192,11 +192,13 @@ with st.expander("📂 Buka data toko yang tersimpan (lanjutkan audit)"):
                     st.query_params["store"] = st.session_state["store_name"]
                     st.query_params["date"] = st.session_state["date1"]
                     # ── LOG: Update ──
+                    _upd_result = compute_all(structure, st.session_state["remarks"])
+                    _upd_score = f"{round(_upd_result['final_score'], 2)}, {_upd_result['grade']}"
                     log_audit_traffic(
                         st.session_state.get("auditor", ""),
                         st.session_state.get("store_name", ""),
                         st.session_state.get("date1", ""),
-                        _score_str,
+                        _upd_score,
                         "Update",
                     )
                     st.success("Draft ini berhasil diperbarui (nama/tanggal ikut berubah kalau memang diubah, tidak membuat draft baru).")
@@ -305,7 +307,7 @@ m3.metric("GRADING", result["grade"])
 
 st.markdown("<div style='height:110px'></div>", unsafe_allow_html=True)
 
-# ── Format score untuk log ──
+# ── Format score untuk log (Save & Download pakai ini) ──
 _score_str = f"{round(result['final_score'], 2)}, {result['grade']}"
 
 with st.container(key="floating_actions"):
